@@ -5,6 +5,17 @@ from skimage.io import imsave, imread, imshow, MultiImage, ImageCollection
 import matplotlib.pyplot as plt
 from scipy.ndimage import median_filter
 import os
+import time, os, sys
+from urllib.parse import urlparse
+# import matplotlib as mpl
+# %matplotlib inline
+# mpl.rcParams['figure.dpi'] = 300
+
+from cellpose import models, utils, io
+import glob
+import fnmatch
+import argparse
+
 
 # @Artemiy: At this point, I just succeeded in making the script that locates the spots, and provides the intensity at their center.
 # | I can't get my technique to produce spots as masks working since skimage "peak_local_max" only returns coordinates, instead of patches within a certain range.
@@ -52,42 +63,52 @@ def attribute_spots(labeled_transmission, spots_coordinates, fluo_channel):
 
 
 # @Artemiy: You can remove this function and replace it by yours, just watch where it is used in the main().
-def segment_transmission(transmission_channel):
+def segment_transmission(transmission_channel, model):
     # Returns a labeled image (one value per individual)
-    return None
+    chan = [0,0]
+    masks, flows, styles, diams = model.eval(transmission_channel, diameter=None, channels=chan)
 
 
-def main():
+    return masks
+
+
+def main(input_dir):
 
     # Batching of an images folder:
     # @Artemiy: We maybe need some piece of GUI for the user to give a path ?
-    folder_path = "/home/benedetti/Documents/projects/10-spots-in-yeasts/testing-set-2"
-    content = os.listdir(folder_path)
+    content = os.listdir(input_dir)
+
+    model = models.Cellpose(gpu=False, model_type='cyto')
 
     for c in content:
         if not c.lower().endswith("tif"):
             continue
 
-        full_path = os.path.join(folder_path, c)
+        full_path = os.path.join(input_dir, c)
 
         if not os.path.isfile(full_path):
             continue
     
         print(f"Currently processing: {full_path}")
 
-        image_col = ImageCollection(path)
+        image_col = ImageCollection(full_path)
 
         transmission_channel = np.array(image_col[0]) # @Artemiy: This is the transmission image. If you don't need it like that, you can remove this line.
         fluo_channel = np.array(image_col[1])
 
-        spots_coordinates = find_spots(fluo_channel) # The result is a list of coordinates corresponding to points.
-        labeled_transmission = segment_transmission(transmission_channel) # @Artemiy: At this points, labeled_transmission must contain 1 label (==value) per individual.
+        spots_coordinates= find_spots(fluo_channel) # The result is a list of coordinates corresponding to points.
+        labeled_transmission  = segment_transmission(transmission_channel, model) # @Artemiy: At this points, labeled_transmission must contain 1 label (==value) per individual.
         # This dictionary contains a list of intensity and is indexed by the value of labels.
         # This is not a list of list because provided labels are not necessarily contiguous.
         spots_intensity_lists = attribute_spots(labeled_transmission, spots_coordinates, fluo_channel)
+        print(spots_intensity_lists)
     
 
-main()
+parser = argparse.ArgumentParser()
+args = parser.parse_args()
+parser.add_argument(dest='input_dir', type=str, help="An input directory with TIFF images.", default="../yeast_test_data")
+main("/home/artemiy/2023_defragmentation_school_porto/yeast_test_data")
+# print(args.input_dir)
 
 # @Artemiy: What do we make from the final data ?
 # | Just a JSON ? stats over intensity (Q1, Q3, med & avg) + histogram of nb of spots/cell ?
